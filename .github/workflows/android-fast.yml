@@ -1,0 +1,74 @@
+
+name: Android Fast Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Run ID with the game artifact'
+        required: true
+        default: '41481916384'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Reuse previously prepared game resources
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+        run: |
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name game --dir build/game
+          test -s build/game/asset-manifest.json
+          test -s build/game/icons/icon-512.png
+
+      - name: Keep existing installed game untouched
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          original = p.read_text(encoding='utf-8')
+          needle = 'buildTypes {'
+          assert original.count(needle) == 1, 'Unexpected Android Gradle structure'
+          original = original.replace(
+              needle,
+              'buildTypes {\n        getByName("debug") {\n            applicationIdSuffix = ".fast"\n        }',
+              1,
+          )
+          p.write_text(original, encoding='utf-8')
+          PY
+
+      - name: Stage local game and build Android only
+        run: |
+          node scripts/stage-android.ts
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon \
+            -PpokebonkVersionCode="$((200000 + GITHUB_RUN_NUMBER))" \
+            -PpokebonkVersionName="fast-${GITHUB_RUN_NUMBER}" \
+            assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-fast-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
