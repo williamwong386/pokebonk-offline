@@ -204,7 +204,7 @@ jobs:
           node scripts/verify-game.ts
           node scripts/stage-android.ts
           cd android
-          ./gradlew --no-daemon -PpokebonkVersionCode="$((100000 + GITHUB_RUN_NUMBER))" -PpokebonkVersionName="${{ needs.prepare.outputs.offlineVersion }}" assembleRelease lintRelease
+          ./gradlew --no-daemon -PpokebonkVersionCode="$((100000 + GITHUB_RUN_NUMBER))" -PpokebonkVersionName="${{ needs.prepare.outputs.offlineVersion }}" assembleRelease assembleDebug lintRelease
       - name: Sign and verify APK
         if: inputs.publish
         env:
