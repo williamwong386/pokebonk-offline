@@ -1,0 +1,149 @@
+name: Android Local CI
+
+on:
+  push:
+    branches:
+      - restore-local-updater-code8
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version name'
+        required: true
+        type: string
+        default: '0.0.25'
+      version_code:
+        description: 'Android VersionCode'
+        required: true
+        type: string
+        default: '10'
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build and verify Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VERSION_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '0.0.24' }}
+      VERSION_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.version_code || '9' }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+          run_install: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+          if [ -z "$SDK" ]; then
+            echo "::error::Android SDK path not found"
+            exit 1
+          fi
+
+          echo "Android SDK: $SDK"
+
+          test -f "$SDK/platforms/android-36/android.jar"
+          test -x "$SDK/build-tools/36.0.0/aapt"
+          test -x "$SDK/build-tools/36.0.0/apksigner"
+
+          echo "Android SDK 36: OK"
+          echo "Build-Tools 36.0.0: OK"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare offline game
+        run: pnpm prepare:game
+
+      - name: Stage Android game assets
+        run: pnpm stage:android
+
+      - name: Validate version inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version name"
+            exit 1
+          fi
+
+          if [[ ! "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid VersionCode"
+            exit 1
+          fi
+
+          if (( ${#VERSION_CODE} > 10 )); then
+            echo "::error::VersionCode too large"
+            exit 1
+          fi
+
+          if (( VERSION_CODE > 2147483647 )); then
+            echo "::error::VersionCode too large"
+            exit 1
+          fi
+
+          echo "Version: $VERSION_NAME"
+          echo "VersionCode: $VERSION_CODE"
+
+      - name: Compile Android APK
+        working-directory: android
+        run: |
+          gradle --version
+          gradle --no-daemon \
+            -PpokebonkVersionCode="$VERSION_CODE" \
+            -PpokebonkVersionName="$VERSION_NAME" \
+            assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
+          SIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+
+          test -s "$APK"
+
+          "$AAPT" dump badging "$APK" | grep -F \
+            "name='dev.vdustr.pokebonk.offline.local' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
+
+          "$SIGNER" verify --print-certs "$APK"
+
+          sha256sum "$APK"
+
+          echo "### Android CI passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: $VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- VersionCode: $VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Package: dev.vdustr.pokebonk.offline.local" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Compilation: passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- APK upload: disabled" >> "$GITHUB_STEP_SUMMARY"
