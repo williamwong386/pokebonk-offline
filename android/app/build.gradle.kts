@@ -20,6 +20,9 @@ android {
     defaultConfig { resValue("string", "app_name", "PokéBonk Offline") }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".local"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

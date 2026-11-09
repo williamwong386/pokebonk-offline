@@ -115,6 +115,7 @@ public final class MainActivity extends Activity {
         applyDisplayCutoutSafeArea();
         setContentView(rootView);
         registerBackHandler();
+        UpdateChecker.onLaunch(this);
         getWindow().getDecorView().post(this::hideSystemBars);
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(OfflineAssetWebViewClient.APP_ORIGIN + "/index.html");
@@ -160,6 +161,7 @@ public final class MainActivity extends Activity {
             .setTitle(R.string.exit_dialog_title)
             .setMessage(R.string.exit_dialog_message)
             .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton("\u66f4\u65b0\u8bbe\u7f6e", (updateDialog, which) -> UpdateChecker.showMenu(this))
             .setPositiveButton(R.string.exit_dialog_confirm, (ignoredDialog, ignoredButton) -> closeApp())
             .create();
         Window dialogWindow = dialog.getWindow();
