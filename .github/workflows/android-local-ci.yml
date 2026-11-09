@@ -39,12 +39,26 @@ jobs:
           node-version: '24'
           cache: pnpm
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android packages
+      - name: Verify preinstalled Android SDK
+        shell: bash
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          set -euo pipefail
+
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+          if [ -z "$SDK" ]; then
+            echo "::error::Android SDK path not found"
+            exit 1
+          fi
+
+          echo "Android SDK: $SDK"
+
+          test -f "$SDK/platforms/android-36/android.jar"
+          test -x "$SDK/build-tools/36.0.0/aapt"
+          test -x "$SDK/build-tools/36.0.0/apksigner"
+
+          echo "Android SDK 36: OK"
+          echo "Build-Tools 36.0.0: OK"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
