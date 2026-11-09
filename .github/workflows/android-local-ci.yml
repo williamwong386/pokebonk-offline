@@ -62,6 +62,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -75,8 +77,8 @@ jobs:
       - name: Compile Android APK
         working-directory: android
         run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon \
+          gradle --version
+          gradle --no-daemon \
             -PpokebonkVersionCode=9 \
             -PpokebonkVersionName=0.0.24 \
             assembleDebug
