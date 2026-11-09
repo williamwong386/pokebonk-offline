@@ -5,6 +5,17 @@ on:
     branches:
       - restore-local-updater-code8
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version name'
+        required: true
+        type: string
+        default: '0.0.25'
+      version_code:
+        description: 'Android VersionCode'
+        required: true
+        type: string
+        default: '10'
 
 permissions:
   contents: read
@@ -14,6 +25,9 @@ jobs:
     name: Build and verify Android
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      VERSION_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '0.0.24' }}
+      VERSION_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.version_code || '9' }}
 
     steps:
       - name: Checkout source
@@ -74,13 +88,41 @@ jobs:
       - name: Stage Android game assets
         run: pnpm stage:android
 
+      - name: Validate version inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version name"
+            exit 1
+          fi
+
+          if [[ ! "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid VersionCode"
+            exit 1
+          fi
+
+          if (( ${#VERSION_CODE} > 10 )); then
+            echo "::error::VersionCode too large"
+            exit 1
+          fi
+
+          if (( VERSION_CODE > 2147483647 )); then
+            echo "::error::VersionCode too large"
+            exit 1
+          fi
+
+          echo "Version: $VERSION_NAME"
+          echo "VersionCode: $VERSION_CODE"
+
       - name: Compile Android APK
         working-directory: android
         run: |
           gradle --version
           gradle --no-daemon \
-            -PpokebonkVersionCode=9 \
-            -PpokebonkVersionName=0.0.24 \
+            -PpokebonkVersionCode="$VERSION_CODE" \
+            -PpokebonkVersionName="$VERSION_NAME" \
             assembleDebug
 
       - name: Verify APK
@@ -92,7 +134,7 @@ jobs:
           test -s "$APK"
 
           "$AAPT" dump badging "$APK" | grep -F \
-            "name='dev.vdustr.pokebonk.offline.local' versionCode='9' versionName='0.0.24'"
+            "name='dev.vdustr.pokebonk.offline.local' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
 
           "$SIGNER" verify --print-certs "$APK"
 
@@ -100,8 +142,8 @@ jobs:
 
           echo "### Android CI passed" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Version: 0.0.24" >> "$GITHUB_STEP_SUMMARY"
-          echo "- VersionCode: 9" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: $VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- VersionCode: $VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
           echo "- Package: dev.vdustr.pokebonk.offline.local" >> "$GITHUB_STEP_SUMMARY"
           echo "- Compilation: passed" >> "$GITHUB_STEP_SUMMARY"
           echo "- APK upload: disabled" >> "$GITHUB_STEP_SUMMARY"
